@@ -57,6 +57,7 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
         with:
+          enablement: true
           # Automatically inject basePath in your Next.js configuration file and disable
           # server side image optimization (https://nextjs.org/docs/api-reference/next/image#unoptimized).
           #
