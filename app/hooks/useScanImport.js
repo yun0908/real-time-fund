@@ -41,7 +41,7 @@ const OCR_NOISE_PARTIALS = [
 
 const OCR_FUND_NAME_HINT_RE = /(混合|股票|债券|债基|指数|QDII|ETF|LOF|联接|货币|短债|中短债|配置|量化|制造|医药|消费|成长|价值|红利|科技|互联网|机会)/i;
 const OCR_SHARE_CLASS_SUFFIX_RE = /(?:\)|）)?[A-Z]$/i;
-const OCR_GENERIC_SUFFIX_ONLY_RE = /^(?:[A-Z]|混合[A-Z]?|股票(?:\(QDII\))?[A-Z]?|债券[A-Z]?|指数[A-Z]?|联接[A-Z]?|ETF联接[A-Z]?|LOF[A-Z]?|\(QDII\)[A-Z]?|合\(QDII\)[A-Z]?)$/i;
+const OCR_GENERIC_SUFFIX_ONLY_RE = /^(?:[A-Z]|[\u4e00-\u9fa5]{1,2}(?:\(QDII\))?(?:人民币|美元现汇|美元现钞|美元)?[A-Z]?|混合[A-Z]?|股票(?:\(QDII\))?[A-Z]?|债券[A-Z]?|指数[A-Z]?|联接[A-Z]?|ETF联接[A-Z]?|LOF[A-Z]?|\(QDII\)[A-Z]?|合\(QDII\)[A-Z]?)$/i;
 
 const normalizeOcrLine = (raw) => String(raw ?? '')
   .trim()
@@ -49,6 +49,8 @@ const normalizeOcrLine = (raw) => String(raw ?? '')
   .replace(/[（]/g, '(')
   .replace(/[）]/g, ')')
   .replace(/[，。、“”‘’·•：:；;【】\[\]{}]/g, '');
+
+const normalizeFundNameText = (raw) => normalizeOcrLine(raw).toUpperCase();
 
 const isNumericLikeOcrLine = (line) => /^[+\-]?\d[\d.,%/-]*$/.test(line);
 
@@ -83,6 +85,65 @@ const scoreFundNameCandidate = (name) => {
   if (name.length >= 6) score += 1;
   if (!/\d/.test(name)) score += 1;
   return score;
+};
+
+const stripFundNameVariant = (raw) => normalizeFundNameText(raw)
+  .replace(/发起式/g, '')
+  .replace(/人民币/g, '')
+  .replace(/美元现汇/g, '')
+  .replace(/美元现钞/g, '')
+  .replace(/美元/g, '')
+  .replace(/\(QDII\)/g, '')
+  .replace(/[A-Z]$/g, '');
+
+const getFundNameShareSuffix = (raw) => {
+  const normalized = normalizeFundNameText(raw);
+  const match = normalized.match(/([A-Z])$/);
+  return match ? match[1] : '';
+};
+
+const getFundNameChinesePrefix = (raw) => {
+  const normalized = normalizeFundNameText(raw);
+  const match = normalized.match(/[\u4e00-\u9fa5]{2,}/);
+  return match ? match[0].slice(0, 2) : '';
+};
+
+const isFundNameLikelyPresentInOcr = ({ fundName, fundCode, normalizedOcrText, fallbackFunds }) => {
+  if (fundCode && normalizedOcrText.includes(String(fundCode).trim())) return true;
+  const normalizedName = normalizeFundNameText(fundName);
+  if (!normalizedName) return false;
+  if (normalizedOcrText.includes(normalizedName)) return true;
+
+  const targetCore = stripFundNameVariant(fundName);
+  const targetShare = getFundNameShareSuffix(fundName);
+  if (!targetCore) return false;
+
+  return (fallbackFunds || []).some((item) => {
+    const fallbackName = item?.fundName || '';
+    const normalizedFallback = normalizeFundNameText(fallbackName);
+    if (!normalizedFallback) return false;
+    if (normalizedFallback.includes(normalizedName) || normalizedName.includes(normalizedFallback)) return true;
+
+    const fallbackCore = stripFundNameVariant(fallbackName);
+    if (!fallbackCore) return false;
+
+    const fallbackShare = getFundNameShareSuffix(fallbackName);
+    if (targetShare && fallbackShare && targetShare !== fallbackShare) return false;
+
+    if (targetCore.length < 6 || fallbackCore.length < 6) return false;
+
+    const targetPrefix = getFundNameChinesePrefix(fundName);
+    const fallbackPrefix = getFundNameChinesePrefix(fallbackName);
+    if (targetPrefix && fallbackPrefix && targetPrefix !== fallbackPrefix) return false;
+
+    return fallbackCore.includes(targetCore) || targetCore.includes(fallbackCore);
+  });
+};
+
+const hasSameFundNameCandidate = (allFundsData, candidateName) => {
+  const normalizedCandidate = normalizeFundNameText(candidateName);
+  if (!normalizedCandidate) return false;
+  return allFundsData.some((item) => normalizeFundNameText(item?.fundName || '') === normalizedCandidate);
 };
 
 const buildFallbackFundsFromOcrText = (text) => {
@@ -303,29 +364,37 @@ export function useScanImport({
           console.error(e);
         }
 
-        let parsedFundsCount = 0;
+        const normalizedOcrText = normalizeFundNameText(text);
+        const fallbackFunds = buildFallbackFundsFromOcrText(text);
+
         if (Array.isArray(fundsRes) && fundsRes.length > 0) {
           fundsRes.forEach((fund) => {
             const code = fund.fundCode || '';
             const name = (fund.fundName || '').trim();
+            const isLikelyPresent = isFundNameLikelyPresentInOcr({
+              fundName: name,
+              fundCode: code,
+              normalizedOcrText,
+              fallbackFunds,
+            });
+
+            if (!isLikelyPresent) return;
+
             if (code && !addedFundCodes.has(code)) {
               addedFundCodes.add(code);
               allFundsData.push({ fundCode: code, fundName: name, holdAmounts: fund.holdAmounts || '', holdGains: fund.holdGains || '' });
-              parsedFundsCount += 1;
-            } else if (!code && name) {
+            } else if (!code && name && !hasSameFundNameCandidate(allFundsData, name)) {
               allFundsData.push({ fundCode: '', fundName: name, holdAmounts: fund.holdAmounts || '', holdGains: fund.holdGains || '' });
-              parsedFundsCount += 1;
             }
           });
         }
 
-        // 云端解析没有产出时，直接从 OCR 原文兜底提取候选基金名称，再走名称匹配代码流程
-        if (parsedFundsCount === 0 && text) {
-          const fallbackFunds = buildFallbackFundsFromOcrText(text);
-          fallbackFunds.forEach((fund) => {
+        // 始终补充一轮 OCR 本地兜底，避免云端仅识别出部分基金时遗漏剩余名称
+        fallbackFunds.forEach((fund) => {
+          if (fund?.fundName && !hasSameFundNameCandidate(allFundsData, fund.fundName)) {
             allFundsData.push(fund);
-          });
-        }
+          }
+        });
       }
 
       if (abortScanRef.current) return;
