@@ -8,6 +8,12 @@ import { MailIcon } from './Icons';
 import githubImg from "../assets/github.svg";
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
+const DEFAULT_EMAIL_OTP_LENGTH = 6;
+const parsedEmailOtpLength = Number(process.env.NEXT_PUBLIC_EMAIL_OTP_LENGTH || DEFAULT_EMAIL_OTP_LENGTH);
+const emailOtpLength = Number.isFinite(parsedEmailOtpLength)
+  ? Math.min(Math.max(Math.trunc(parsedEmailOtpLength), 4), 10)
+  : DEFAULT_EMAIL_OTP_LENGTH;
+
 export default function LoginModal({onClose,
   showToast,
   isExplicitLoginRef,
@@ -66,8 +72,8 @@ export default function LoginModal({onClose,
 
   const handleVerifyEmailOtp = async () => {
     setLoginError('');
-    if (!loginOtp || loginOtp.length < 4) {
-      setLoginError('请输入邮箱中的验证码');
+    if (!loginOtp || loginOtp.length < emailOtpLength) {
+      setLoginError(`请输入完整的 ${emailOtpLength} 位邮箱验证码`);
       return;
     }
     if (!isSupabaseConfigured) {
@@ -196,10 +202,10 @@ export default function LoginModal({onClose,
               }
             >
               <div className="muted" style={{ marginBottom: 8, fontSize: '0.8rem' }}>
-                请输入邮箱验证码以完成注册/登录
+                请输入 {emailOtpLength} 位邮箱验证码以完成注册/登录
               </div>
               <InputOTP
-                maxLength={6}
+                maxLength={emailOtpLength}
                 value={loginOtp}
                 onChange={(value) => setLoginOtp(value)}
                 disabled={loginLoading}
@@ -207,14 +213,12 @@ export default function LoginModal({onClose,
                 autoComplete="one-time-code"
                 type={isMobile ? 'tel' : 'text'}
                 enterKeyHint="done"
+                containerClassName="w-full justify-center"
               >
-                <InputOTPGroup>
-                  <InputOTPSlot index={0} />
-                  <InputOTPSlot index={1} />
-                  <InputOTPSlot index={2} />
-                  <InputOTPSlot index={3} />
-                  <InputOTPSlot index={4} />
-                  <InputOTPSlot index={5} />
+                <InputOTPGroup className="login-otp-group">
+                  {Array.from({ length: emailOtpLength }, (_, index) => (
+                    <InputOTPSlot key={index} index={index} className="login-otp-slot" />
+                  ))}
                 </InputOTPGroup>
               </InputOTP>
             </div>
@@ -236,7 +240,7 @@ export default function LoginModal({onClose,
               className="button"
               type={loginSuccess ? 'button' : 'submit'}
               onClick={loginSuccess ? handleVerifyEmailOtp : undefined}
-              disabled={loginLoading || (loginSuccess && !loginOtp)}
+              disabled={loginLoading || (loginSuccess && loginOtp.length < emailOtpLength)}
             >
               {loginLoading ? '处理中...' : loginSuccess ? '确认验证码' : '发送邮箱验证码'}
             </button>

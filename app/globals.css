@@ -4138,6 +4138,18 @@ input[type="number"] {
   color: var(--success);
 }
 
+.login-otp-group {
+  width: 100%;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.login-otp-slot {
+  width: 44px;
+  min-width: 44px;
+}
+
 /* ========== GitHub 登录按钮样式 ========== */
 .github-login-btn {
   backdrop-filter: blur(12px);
@@ -4214,6 +4226,16 @@ input[type="number"] {
   .login-modal {
     max-width: 100% !important;
     margin: 16px;
+  }
+
+  .login-otp-group {
+    gap: 8px;
+  }
+
+  .login-otp-slot {
+    width: 40px;
+    min-width: 40px;
+    height: 48px;
   }
 }
 
