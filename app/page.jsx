@@ -6705,7 +6705,7 @@ export default function HomePage() {
               <path d="M5 14c2-4 7-6 14-5" stroke="var(--primary)" strokeWidth="2" />
             </svg>
           </div>
-          <span>基估宝</span>
+          <span>实时基金</span>
         </div>
         <div className={`glass add-fund-section navbar-add-fund ${(isSearchFocused || selectedFunds.length > 0) ? 'search-focused' : ''}`} role="region" aria-label="添加基金">
           <div className="search-container" ref={dropdownRef}>
@@ -6813,7 +6813,7 @@ export default function HomePage() {
         <div className={`actions ${(isSearchFocused || selectedFunds.length > 0) ? 'search-focused-sibling' : ''}`}>
           <UpdateChecker onModalOpenChange={setIsUpdateModalOpen} />
           <span className="github-icon-wrap">
-            <Image unoptimized alt="项目Github地址" src={githubImg} style={{ width: '30px', height: '30px', cursor: 'pointer' }} onClick={() => window.open("https://github.com/hzm0321/real-time-fund")} />
+            <Image unoptimized alt="项目Github地址" src={githubImg} style={{ width: '30px', height: '30px', cursor: 'pointer' }} onClick={() => window.open("https://github.com/yun0908/real-time-fund")} />
           </span>
           {isMobile && (
             <button
@@ -7530,7 +7530,7 @@ export default function HomePage() {
                   }}
                 >
                   <span>☕</span>
-                  <span>点此请作者喝杯咖啡</span>
+                  <span>项目赞助</span>
                 </button>
               </div>
             </>

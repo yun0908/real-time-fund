@@ -6,8 +6,8 @@ export default function manifest() {
   const iconSrc = `${basePath}/Icon-60@3x.png`;
 
   return {
-    name: '基估宝',
-    short_name: '基估宝',
+    name: '实时基金',
+    short_name: '实时基金',
     description: '基金管理管家',
     start_url: appRoot,
     scope: appRoot,

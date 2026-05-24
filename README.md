@@ -2,16 +2,15 @@
 
 一个基于 Next.js 开发的基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配。
 预览地址：  
-1. [https://hzm0321.github.io/real-time-fund/](https://hzm0321.github.io/real-time-fund/)
-2. [https://fund.cc.cd/](https://fund.cc.cd/) （加速国内访问）
+1. [https://yun0908.github.io/real-time-fund/](https://yun0908.github.io/real-time-fund/)
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=hzm0321%2Freal-time-fund&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=yun0908%2Freal-time-fund&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=hzm0321/real-time-fund&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=hzm0321/real-time-fund&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=hzm0321/real-time-fund&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=yun0908/real-time-fund&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=yun0908/real-time-fund&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=yun0908/real-time-fund&type=date&legend=top-left" />
  </picture>
 </a>
 
@@ -50,7 +49,7 @@
 
 1. 克隆仓库：
    ```bash
-   git clone https://github.com/hzm0321/real-time-fund.git
+   git clone https://github.com/yun0908/real-time-fund.git
    cd real-time-fund
    ```
 
@@ -68,7 +67,7 @@
   - `NEXT_PUBLIC_Supabase_ANON_KEY`：Supabase 匿名公钥
   - `NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY`：Web3Forms Access Key
   - `NEXT_PUBLIC_GA_ID`：Google Analytics Measurement ID（如 `G-xxxx`）
-  - `NEXT_PUBLIC_GITHUB_LATEST_RELEASE_URL`：GitHub 最新 Release 接口地址，用于在页面中展示"发现新版本"提示（如：`https://api.github.com/repos/hzm0321/real-time-fund/releases/latest`）
+  - `NEXT_PUBLIC_GITHUB_LATEST_RELEASE_URL`：GitHub 最新 Release 接口地址，用于在页面中展示"发现新版本"提示（如：`https://api.github.com/repos/yun0908/real-time-fund/releases/latest`）
   - `NEXT_PUBLIC_IS_GITHUB_LOGIN`：控制是否开启 GitHub OAuth 登录功能，可选值 `true` / `false`（默认 `false`）
 
 注：如不使用登录、反馈或 GA 统计功能，可不设置对应变量
@@ -117,7 +116,7 @@
    - 访问 GitHub → Settings → Developer settings → OAuth Apps → New OAuth App
    - 填写信息：
      - Application name：自定义应用名称
-     - Homepage URL：你的应用地址（如 `https://hzm0321.github.io/real-time-fund/`）
+     - Homepage URL：你的应用地址（如 `https://yun0908.github.io/real-time-fund/`）
      - Authorization callback URL：`https://<your-supabase-project-id>.supabase.co/auth/v1/callback`
    - 创建后获取 **Client ID** 和 **Client Secret**
 
@@ -129,8 +128,8 @@
 
    **第三步：配置站点 URL（重要）**
    - Supabase控制台 → Authentication → URL Configuration
-   - **Site URL**：设置为你的应用主域名（如 `https://hzm0321.github.io/`）
-   - **Redirect URLs**：添加你的应用完整路径（如 `https://hzm0321.github.io/real-time-fund/`）
+   - **Site URL**：设置为你的应用主域名（如 `https://yun0908.github.io/`）
+   - **Redirect URLs**：添加你的应用完整路径（如 `https://yun0908.github.io/real-time-fund/`）
 
    配置完成后，用户即可通过 GitHub 账号一键登录。
 
@@ -237,23 +236,23 @@ docker compose up -d
 
 ### Docker Hub
 
-镜像已发布至 Docker Hub，可直接拉取运行，无需本地构建。
+如果你发布了自己的 Docker 镜像，可将下列命令中的镜像名替换为你的仓库地址：
 
 1. **拉取镜像**
    ```bash
-   docker pull hzm0321/real-time-fund:latest
+   docker pull <your-dockerhub-username>/real-time-fund:latest
    ```
 
 2. **启动容器**  
    访问 [http://localhost:3000](http://localhost:3000) 即可使用。
    ```bash
-   docker run -d -p 3000:3000 --name real-time-fund --restart always hzm0321/real-time-fund:latest
+   docker run -d -p 3000:3000 --name real-time-fund --restart always <your-dockerhub-username>/real-time-fund:latest
    ```
 
 3. **使用自定义环境变量（运行时替换）**  
    镜像内已预置占位符，启动时通过环境变量即可覆盖，无需重新构建。例如使用本地 `.env`：
    ```bash
-   docker run -d -p 3000:3000 --name real-time-fund --restart always --env-file .env hzm0321/real-time-fund:latest
+   docker run -d -p 3000:3000 --name real-time-fund --restart always --env-file .env <your-dockerhub-username>/real-time-fund:latest
    ```
    或单独指定变量：`-e NEXT_PUBLIC_SUPABASE_URL=xxx -e NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx`。  
    变量名与本地开发一致：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY`、`NEXT_PUBLIC_GA_ID`、`NEXT_PUBLIC_GITHUB_LATEST_RELEASE_URL`。
@@ -264,12 +263,6 @@ docker compose up -d
 2. **查看详情**：卡片将展示实时估值及前 10 重仓股的占比与今日涨跌。
 3. **调整频率**：点击右上角“设置”图标，可调整自动刷新的间隔时间。
 4. **删除基金**：点击卡片右上角的红色删除图标即可移除。
-
-## 💬 开发者交流群
-
-欢迎基金实时开发者加入微信群聊讨论开发与协作：
-
-<img src="./doc/weChatGroupDevelop.jpg" width="300">
 
 ## 📝 免责声明
 
@@ -286,5 +279,4 @@ docker compose up -d
 完整协议文本见仓库根目录 [LICENSE](./LICENSE) 文件，或 [GNU AGPL v3 官方说明](https://www.gnu.org/licenses/agpl-3.0.html)。  
 
 ---
-二开或转载需注明出处。  
-Made by [hzm](https://github.com/hzm0321)
+本仓库为二次开发版本，来源说明见 [NOTICE](./NOTICE)。
