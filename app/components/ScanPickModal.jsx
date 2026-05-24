@@ -68,7 +68,11 @@ export default function ScanPickModal({ onClose, onPick, onFilesDrop, isScanning
           <span>选择持仓截图</span>
         </div>
         <div className="muted" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
-          从相册选择一张或多张持仓截图，系统将自动识别其中的<span style={{ color: 'var(--primary)' }}>基金代码（6位数字）</span>，并支持批量导入。
+          从相册选择一张或多张持仓截图，系统将优先识别其中的
+          <span style={{ color: 'var(--primary)' }}>基金代码（6位数字）</span>
+          ，若截图里没有代码，也会尝试根据
+          <span style={{ color: 'var(--primary)' }}>基金名称</span>
+          自动匹配并批量导入。
         </div>
         <div
           className={`scan-pick-dropzone muted ${isDragging ? 'dragging' : ''}`}

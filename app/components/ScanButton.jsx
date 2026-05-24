@@ -8,7 +8,7 @@ export default function ScanButton({ onClick, disabled }) {
       className="icon-button"
       onClick={onClick}
       disabled={disabled}
-      title="拍照/上传图片识别基金代码"
+      title="拍照/上传图片识别基金名称或代码"
       style={{
         opacity: disabled ? 0.5 : 1,
         cursor: disabled ? 'wait' : 'pointer',

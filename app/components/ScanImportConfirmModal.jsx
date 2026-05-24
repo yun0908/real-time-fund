@@ -73,7 +73,7 @@ export default function ScanImportConfirmModal({
         )}
         {scannedFunds.length === 0 ? (
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
-            未识别到有效的基金代码，请尝试更清晰的截图或手动搜索。
+            未识别到可导入的基金，请尝试更清晰的截图，或确保基金名称/代码完整后重试。
           </div>
         ) : (
           <>
