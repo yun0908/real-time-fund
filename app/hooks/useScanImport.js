@@ -6,6 +6,130 @@ import { recordValuation } from '../lib/valuationTimeseries';
 import { useFundFuzzyMatcher } from './useFundFuzzyMatcher';
 import { useStorageStore, useUserStore } from '../stores';
 
+const OCR_NOISE_EXACT_LINES = new Set([
+  '基金',
+  '我的持有',
+  '持有收益排序',
+  '全部',
+  '偏股',
+  '偏债',
+  '指数',
+  '黄金',
+  '全球',
+  '名称',
+  '金额昨日收益',
+  '持有收益率',
+  '定投',
+  '基金市场',
+  '机会',
+  '自选',
+  '持有',
+]);
+
+const OCR_NOISE_PARTIALS = [
+  '市场解读',
+  '去市场看看',
+  '更多产品',
+  '确认导入基金',
+  '拍照识别方案',
+  '拍照上传图片识别',
+  '未识别到可导入的基金',
+  '科技板块高位调整',
+  '昨日收益',
+  '持有收益',
+];
+
+const OCR_FUND_NAME_HINT_RE = /(混合|股票|债券|债基|指数|QDII|ETF|LOF|联接|货币|短债|中短债|配置|量化|制造|医药|消费|成长|价值|红利|科技|互联网|机会)/i;
+const OCR_SHARE_CLASS_SUFFIX_RE = /(?:\)|）)?[A-Z]$/i;
+const OCR_GENERIC_SUFFIX_ONLY_RE = /^(?:[A-Z]|混合[A-Z]?|股票(?:\(QDII\))?[A-Z]?|债券[A-Z]?|指数[A-Z]?|联接[A-Z]?|ETF联接[A-Z]?|LOF[A-Z]?|\(QDII\)[A-Z]?|合\(QDII\)[A-Z]?)$/i;
+
+const normalizeOcrLine = (raw) => String(raw ?? '')
+  .trim()
+  .replace(/\s+/g, '')
+  .replace(/[（]/g, '(')
+  .replace(/[）]/g, ')')
+  .replace(/[，。、“”‘’·•：:；;【】\[\]{}]/g, '');
+
+const isNumericLikeOcrLine = (line) => /^[+\-]?\d[\d.,%/-]*$/.test(line);
+
+const isPotentialFundNameFragment = (line) => {
+  if (!line) return false;
+  if (OCR_NOISE_EXACT_LINES.has(line)) return false;
+  if (OCR_NOISE_PARTIALS.some((keyword) => line.includes(keyword))) return false;
+  if (isNumericLikeOcrLine(line)) return false;
+  if (/\d{3,}/.test(line)) return false;
+
+  const hasChinese = /[\u4e00-\u9fa5]/.test(line);
+  const hasFundToken = /(QDII|ETF|LOF|[A-Z])/.test(line);
+  if (!hasChinese && !hasFundToken) return false;
+  if (line.length === 1 && !/[A-Z]/.test(line)) return false;
+
+  return true;
+};
+
+const shouldMergeFundNameFragments = (current, next) => {
+  if (!isPotentialFundNameFragment(current) || !isPotentialFundNameFragment(next)) return false;
+  if (next.length <= 8) return true;
+  if (OCR_FUND_NAME_HINT_RE.test(next)) return true;
+  if (OCR_SHARE_CLASS_SUFFIX_RE.test(next)) return true;
+  return !OCR_FUND_NAME_HINT_RE.test(current);
+};
+
+const scoreFundNameCandidate = (name) => {
+  let score = 0;
+  if (OCR_FUND_NAME_HINT_RE.test(name)) score += 2;
+  if (/\(QDII\)|ETF|LOF/i.test(name)) score += 2;
+  if (OCR_SHARE_CLASS_SUFFIX_RE.test(name)) score += 1;
+  if (name.length >= 6) score += 1;
+  if (!/\d/.test(name)) score += 1;
+  return score;
+};
+
+const buildFallbackFundsFromOcrText = (text) => {
+  const rawLines = String(text ?? '')
+    .split(/\r?\n/)
+    .map(normalizeOcrLine)
+    .filter(Boolean);
+
+  if (!rawLines.length) return [];
+
+  const candidateSet = new Set();
+  const addCandidate = (candidate) => {
+    const normalized = normalizeOcrLine(candidate);
+    if (!normalized || normalized.length < 2 || normalized.length > 40) return;
+    if (OCR_NOISE_EXACT_LINES.has(normalized)) return;
+    if (OCR_NOISE_PARTIALS.some((keyword) => normalized.includes(keyword))) return;
+    if (OCR_GENERIC_SUFFIX_ONLY_RE.test(normalized)) return;
+    if (!/[\u4e00-\u9fa5]/.test(normalized)) return;
+    if (isNumericLikeOcrLine(normalized)) return;
+    if (!OCR_FUND_NAME_HINT_RE.test(normalized) && !OCR_SHARE_CLASS_SUFFIX_RE.test(normalized) && normalized.length < 6) return;
+    candidateSet.add(normalized);
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const current = rawLines[i];
+    if (!isPotentialFundNameFragment(current)) continue;
+
+    const next = rawLines[i + 1];
+    if (next && shouldMergeFundNameFragments(current, next)) {
+      addCandidate(`${current}${next}`);
+      continue;
+    }
+
+    addCandidate(current);
+  }
+
+  return Array.from(candidateSet)
+    .sort((a, b) => scoreFundNameCandidate(b) - scoreFundNameCandidate(a) || b.length - a.length)
+    .slice(0, 20)
+    .map((fundName) => ({
+      fundCode: '',
+      fundName,
+      holdAmounts: '',
+      holdGains: '',
+    }));
+};
+
 /**
  * OCR 扫描导入基金的完整流程
  *
@@ -179,6 +303,7 @@ export function useScanImport({
           console.error(e);
         }
 
+        let parsedFundsCount = 0;
         if (Array.isArray(fundsRes) && fundsRes.length > 0) {
           fundsRes.forEach((fund) => {
             const code = fund.fundCode || '';
@@ -186,9 +311,19 @@ export function useScanImport({
             if (code && !addedFundCodes.has(code)) {
               addedFundCodes.add(code);
               allFundsData.push({ fundCode: code, fundName: name, holdAmounts: fund.holdAmounts || '', holdGains: fund.holdGains || '' });
+              parsedFundsCount += 1;
             } else if (!code && name) {
               allFundsData.push({ fundCode: '', fundName: name, holdAmounts: fund.holdAmounts || '', holdGains: fund.holdGains || '' });
+              parsedFundsCount += 1;
             }
+          });
+        }
+
+        // 云端解析没有产出时，直接从 OCR 原文兜底提取候选基金名称，再走名称匹配代码流程
+        if (parsedFundsCount === 0 && text) {
+          const fallbackFunds = buildFallbackFundsFromOcrText(text);
+          fallbackFunds.forEach((fund) => {
+            allFundsData.push(fund);
           });
         }
       }
