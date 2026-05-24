@@ -24,6 +24,8 @@ const OCR_NOISE_EXACT_LINES = new Set([
   '机会',
   '自选',
   '持有',
+  '基金市场机会自选持有',
+  '名称金额昨日收益持有收益率',
 ]);
 
 const OCR_NOISE_PARTIALS = [
@@ -37,18 +39,49 @@ const OCR_NOISE_PARTIALS = [
   '科技板块高位调整',
   '昨日收益',
   '持有收益',
+  '名称金额',
+  '我的持有',
+  '基金市场',
+  '自选持有',
 ];
 
 const OCR_FUND_NAME_HINT_RE = /(混合|股票|债券|债基|指数|QDII|ETF|LOF|联接|货币|短债|中短债|配置|量化|制造|医药|消费|成长|价值|红利|科技|互联网|机会)/i;
 const OCR_SHARE_CLASS_SUFFIX_RE = /(?:\)|）)?[A-Z]$/i;
-const OCR_GENERIC_SUFFIX_ONLY_RE = /^(?:[A-Z]|[\u4e00-\u9fa5]{1,2}(?:\(QDII\))?(?:人民币|美元现汇|美元现钞|美元)?[A-Z]?|混合[A-Z]?|股票(?:\(QDII\))?[A-Z]?|债券[A-Z]?|指数[A-Z]?|联接[A-Z]?|ETF联接[A-Z]?|LOF[A-Z]?|\(QDII\)[A-Z]?|合\(QDII\)[A-Z]?)$/i;
+const OCR_GENERIC_SUFFIX_ONLY_RE = /^(?:[A-Z]|[\u4e00-\u9fa5]{1,2}(?:\(QDII\))?(?:人民币|美元现汇|美元现钞|美元)?[A-Z]?|混合[A-Z]?|股票(?:\(QDII\))?[A-Z]?|债券[A-Z]?|指数[A-Z]?|联接[A-Z]?|ETF联接[A-Z]?|LOF[A-Z]?|\(QDII\)(?:人民币|美元现汇|美元现钞|美元)?[A-Z]?|合\(QDII\)(?:人民币|美元现汇|美元现钞|美元)?[A-Z]?)$/i;
+const OCR_TRUNCATED_FUND_TYPE_MAP = {
+  混: '混合',
+  股: '股票',
+  债: '债券',
+  指: '指数',
+  联: '联接',
+};
+
+const stripOcrMetrics = (raw) => String(raw ?? '')
+  .replace(/\s{2,}[+\-]?\d[\d.,]*(?:\s+[+\-]?\d[\d.,%]*)*\s*$/g, '')
+  .replace(/[~`_=*]+/g, ' ')
+  .trim();
 
 const normalizeOcrLine = (raw) => String(raw ?? '')
   .trim()
   .replace(/\s+/g, '')
   .replace(/[（]/g, '(')
   .replace(/[）]/g, ')')
-  .replace(/[，。、“”‘’·•：:；;【】\[\]{}]/g, '');
+  .replace(/[，。、“”‘’·•：:；;【】\[\]{}<>《》"'\\/@&]/g, '');
+
+const cleanOcrFundLine = (raw) => normalizeOcrLine(stripOcrMetrics(raw))
+  .replace(/^[^\u4e00-\u9fa5A-Z(]+/g, '')
+  .replace(/[^\u4e00-\u9fa5A-Z)]+$/g, '');
+
+const repairOcrFundCandidate = (raw) => normalizeOcrLine(raw)
+  .replace(/QDI[1IL]?D/gi, 'QDII')
+  .replace(/\(QDII([A-Z])$/i, '(QDII)$1')
+  .replace(/\(QDII\)([A-Z])$/i, '(QDII)$1')
+  .replace(/ARMA$/i, '人民币A')
+  .replace(/ARMC$/i, '人民币C')
+  .replace(/RMBA$/i, '人民币A')
+  .replace(/RMBC$/i, '人民币C')
+  .replace(/RMB([A-Z])$/i, '人民币$1')
+  .replace(/人民巿/g, '人民币');
 
 const normalizeFundNameText = (raw) => normalizeOcrLine(raw).toUpperCase();
 
@@ -72,6 +105,7 @@ const isPotentialFundNameFragment = (line) => {
 const shouldMergeFundNameFragments = (current, next) => {
   if (!isPotentialFundNameFragment(current) || !isPotentialFundNameFragment(next)) return false;
   if (next.length <= 8) return true;
+  if (/^[合票债指股]/.test(next)) return true;
   if (OCR_FUND_NAME_HINT_RE.test(next)) return true;
   if (OCR_SHARE_CLASS_SUFFIX_RE.test(next)) return true;
   return !OCR_FUND_NAME_HINT_RE.test(current);
@@ -146,17 +180,90 @@ const hasSameFundNameCandidate = (allFundsData, candidateName) => {
   return allFundsData.some((item) => normalizeFundNameText(item?.fundName || '') === normalizedCandidate);
 };
 
+const buildExpandedFundTypeCandidate = (current, next) => {
+  const normalizedCurrent = repairOcrFundCandidate(current);
+  const normalizedNext = repairOcrFundCandidate(next);
+  if (!normalizedCurrent || !normalizedNext) return '';
+
+  const suffix = normalizedCurrent.slice(-1);
+  const expanded = OCR_TRUNCATED_FUND_TYPE_MAP[suffix];
+  if (!expanded) return '';
+  if (!/^(?:\(|QDII|人民币|美元|[A-Z])/.test(normalizedNext)) return '';
+
+  return `${normalizedCurrent.slice(0, -1)}${expanded}${normalizedNext}`;
+};
+
+const buildFundSearchQueries = (rawName) => {
+  const candidateSet = new Set();
+  const addCandidate = (value) => {
+    const normalized = repairOcrFundCandidate(value);
+    if (!normalized || normalized.length < 4) return;
+    candidateSet.add(normalized);
+  };
+
+  addCandidate(rawName);
+  addCandidate(String(rawName ?? '').replace(/人民币([A-Z])$/i, '$1'));
+  addCandidate(String(rawName ?? '').replace(/美元现汇([A-Z])$/i, '$1'));
+  addCandidate(String(rawName ?? '').replace(/美元现钞([A-Z])$/i, '$1'));
+  addCandidate(String(rawName ?? '').replace(/美元([A-Z])$/i, '$1'));
+  addCandidate(String(rawName ?? '').replace(/发起式/g, ''));
+
+  return Array.from(candidateSet);
+};
+
+const pickBestSearchFundMatch = (query, list) => {
+  if (!Array.isArray(list) || list.length === 0) return null;
+
+  const normalizedQuery = normalizeFundNameText(query);
+  const queryCore = stripFundNameVariant(query);
+  const queryShare = getFundNameShareSuffix(query);
+  const queryHasBackend = /后端/.test(query);
+  const queryHasRmb = /人民币/.test(query);
+  const queryHasUsd = /美元/.test(query);
+
+  const ranked = list
+    .map((item) => {
+      const candidateName = item?.NAME || item?.SHORTNAME || '';
+      const normalizedName = normalizeFundNameText(candidateName);
+      const candidateCore = stripFundNameVariant(candidateName);
+      const candidateShare = getFundNameShareSuffix(candidateName);
+      let score = 0;
+
+      if (normalizedName === normalizedQuery) score += 6;
+      if (candidateCore && queryCore && candidateCore === queryCore) score += 4;
+      else if (candidateCore && queryCore && (candidateCore.includes(queryCore) || queryCore.includes(candidateCore))) score += 2;
+
+      if (queryShare && candidateShare === queryShare) score += 2;
+      else if (queryShare && candidateShare && candidateShare !== queryShare) score -= 2;
+
+      if (!queryHasBackend && /后端/.test(candidateName)) score -= 2;
+      if (queryHasRmb && !/人民币/.test(candidateName)) score -= 1;
+      if (queryHasUsd && !/美元/.test(candidateName)) score -= 1;
+
+      return { item, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = ranked[0] || null;
+  const second = ranked[1] || null;
+  if (!best) return null;
+  if (best.score >= 6) return best.item;
+  if (best.score >= 4 && (!second || (best.score - second.score) >= 2)) return best.item;
+  if (list.length === 1) return list[0];
+  return null;
+};
+
 const buildFallbackFundsFromOcrText = (text) => {
   const rawLines = String(text ?? '')
     .split(/\r?\n/)
-    .map(normalizeOcrLine)
+    .map(cleanOcrFundLine)
     .filter(Boolean);
 
   if (!rawLines.length) return [];
 
   const candidateSet = new Set();
   const addCandidate = (candidate) => {
-    const normalized = normalizeOcrLine(candidate);
+    const normalized = repairOcrFundCandidate(candidate);
     if (!normalized || normalized.length < 2 || normalized.length > 40) return;
     if (OCR_NOISE_EXACT_LINES.has(normalized)) return;
     if (OCR_NOISE_PARTIALS.some((keyword) => normalized.includes(keyword))) return;
@@ -174,6 +281,7 @@ const buildFallbackFundsFromOcrText = (text) => {
     const next = rawLines[i + 1];
     if (next && shouldMergeFundNameFragments(current, next)) {
       addCandidate(`${current}${next}`);
+      addCandidate(buildExpandedFundTypeCandidate(current, next));
       continue;
     }
 
@@ -408,21 +516,28 @@ export function useScanImport({
           const fundItem = fundsWithoutCode[i];
           setScanProgress(prev => ({ ...prev, current: i + 1 }));
           try {
-            const list = await searchFundsWithTimeout(fundItem.fundName, 8000);
-            if (Array.isArray(list) && list.length === 1) {
-              const found = list[0];
+            const searchQueries = buildFundSearchQueries(fundItem.fundName);
+            for (const query of searchQueries) {
+              const list = await searchFundsWithTimeout(query, 8000);
+              const found = pickBestSearchFundMatch(query, list);
               if (found && found.CODE && !addedFundCodes.has(found.CODE)) {
                 addedFundCodes.add(found.CODE);
                 fundItem.fundCode = found.CODE;
+                break;
               }
-            } else {
-              try {
-                const fuzzyCode = await resolveFundCodeByFuzzy(fundItem.fundName);
-                if (fuzzyCode && !addedFundCodes.has(fuzzyCode)) {
-                  addedFundCodes.add(fuzzyCode);
-                  fundItem.fundCode = fuzzyCode;
-                }
-              } catch (e) {}
+            }
+
+            if (!fundItem.fundCode) {
+              for (const query of searchQueries) {
+                try {
+                  const fuzzyCode = await resolveFundCodeByFuzzy(query);
+                  if (fuzzyCode && !addedFundCodes.has(fuzzyCode)) {
+                    addedFundCodes.add(fuzzyCode);
+                    fundItem.fundCode = fuzzyCode;
+                    break;
+                  }
+                } catch (e) {}
+              }
             }
           } catch (e) {}
         }

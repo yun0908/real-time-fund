@@ -28,66 +28,83 @@ export const useFundFuzzyMatcher = () => {
     if (allFundLoadPromiseRef.current) return allFundLoadPromiseRef.current;
 
     allFundLoadPromiseRef.current = (async () => {
+      const loadLocalFundList = async () => {
+        const assetUrl = new URL('allFund.json', window.location.href).toString();
+        const res = await fetch(assetUrl, { cache: 'force-cache' });
+        if (!res.ok) throw new Error('LOAD_LOCAL_FUND_LIST_FAILED');
+        const json = await res.json();
+        if (!Array.isArray(json) || !json.length) throw new Error('PARSE_LOCAL_FUND_LIST_FAILED');
+        return json;
+      };
+
+      const loadRemoteFundList = async () =>
+        new Promise((resolve, reject) => {
+          if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) {
+            reject(new Error('NO_BROWSER_ENV'));
+            return;
+          }
+
+          const prevR = window.r;
+          const script = document.createElement('script');
+          script.src = `${FUND_CODE_SEARCH_URL}?_=${Date.now()}`;
+          script.async = true;
+
+          let done = false;
+          const cleanup = () => {
+            done = true;
+            if (timer) clearTimeout(timer);
+            if (document.body.contains(script)) {
+              document.body.removeChild(script);
+            }
+            if (prevR === undefined) {
+              try {
+                delete window.r;
+              } catch (e) {
+                window.r = undefined;
+              }
+            } else {
+              window.r = prevR;
+            }
+          };
+
+          const timer = setTimeout(() => {
+            if (done) return;
+            cleanup();
+            reject(new Error('LOAD_ALL_FUND_TIMEOUT'));
+          }, 10000);
+
+          script.onload = () => {
+            if (done) return;
+            const snapshot = Array.isArray(window.r) ? JSON.parse(JSON.stringify(window.r)) : [];
+            cleanup();
+            const parsed = formatEastMoneyFundList(snapshot);
+            if (!parsed.length) {
+              reject(new Error('PARSE_ALL_FUND_FAILED'));
+              return;
+            }
+            resolve(parsed);
+          };
+
+          script.onerror = () => {
+            if (done) return;
+            cleanup();
+            reject(new Error('LOAD_ALL_FUND_FAILED'));
+          };
+
+          document.body.appendChild(script);
+        });
+
       const [fuseModule, allFundList] = await Promise.all([
         import('fuse.js'),
         getQueryClient().fetchQuery({
           queryKey: qk.eastmoneyFundcodeSearchList(),
-          queryFn: () =>
-            new Promise((resolve, reject) => {
-              if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) {
-                reject(new Error('NO_BROWSER_ENV'));
-                return;
-              }
-
-              const prevR = window.r;
-              const script = document.createElement('script');
-              script.src = `${FUND_CODE_SEARCH_URL}?_=${Date.now()}`;
-              script.async = true;
-
-              let done = false;
-              const cleanup = () => {
-                done = true;
-                if (timer) clearTimeout(timer);
-                if (document.body.contains(script)) {
-                  document.body.removeChild(script);
-                }
-                if (prevR === undefined) {
-                  try {
-                    delete window.r;
-                  } catch (e) {
-                    window.r = undefined;
-                  }
-                } else {
-                  window.r = prevR;
-                }
-              };
-
-              const timer = setTimeout(() => {
-                if (done) return;
-                cleanup();
-                reject(new Error('LOAD_ALL_FUND_TIMEOUT'));
-              }, 10000);
-
-              script.onload = () => {
-                if (done) return;
-                const snapshot = Array.isArray(window.r) ? JSON.parse(JSON.stringify(window.r)) : [];
-                cleanup();
-                const parsed = formatEastMoneyFundList(snapshot);
-                if (!parsed.length) {
-                  reject(new Error('PARSE_ALL_FUND_FAILED'));
-                  return;
-                }
-                resolve(parsed);
-              };
-
-              script.onerror = () => {
-                if (done) return;
-                cleanup();
-                reject(new Error('LOAD_ALL_FUND_FAILED'));
-              };
-
-              document.body.appendChild(script);
-            }),
+          queryFn: async () => {
+            try {
+              return await loadLocalFundList();
+            } catch (e) {
+              return await loadRemoteFundList();
+            }
+          },
           staleTime: FUND_LIST_CACHE_TIME,
         }),
       ]);
@@ -129,6 +146,9 @@ export const useFundFuzzyMatcher = () => {
     const hasETF = normalized.includes('ETF');
     const hasLOF = normalized.includes('LOF');
     const hasLink = normalized.includes('联接');
+    const hasBackend = normalized.includes('后端');
+    const hasRmb = normalized.includes('人民币');
+    const hasUsd = normalized.includes('美元');
     const shareMatch = normalized.match(/([A-Z])(?:类)?$/i);
     const shareClass = shareMatch ? shareMatch[1].toUpperCase() : null;
 
@@ -138,6 +158,7 @@ export const useFundFuzzyMatcher = () => {
       .replace(/联接[A-Z]?/g, '')
       .replace(/ETF/g, '')
       .replace(/LOF/g, '')
+      .replace(/发起式/g, '')
       .replace(/[A-Z](?:类)?$/g, '');
 
     return {
@@ -146,6 +167,9 @@ export const useFundFuzzyMatcher = () => {
       hasETF,
       hasLOF,
       hasLink,
+      hasBackend,
+      hasRmb,
+      hasUsd,
       shareClass,
     };
   }, [normalizeFundText]);
@@ -182,6 +206,15 @@ export const useFundFuzzyMatcher = () => {
         }
         if (querySignals.shareClass) {
           finalScore += candidateSignals.shareClass === querySignals.shareClass ? -0.03 : 0.18;
+        }
+        if (querySignals.hasRmb) {
+          finalScore += candidateSignals.hasRmb ? -0.03 : 0.12;
+        }
+        if (querySignals.hasUsd) {
+          finalScore += candidateSignals.hasUsd ? -0.03 : 0.12;
+        }
+        if (!querySignals.hasBackend && candidateSignals.hasBackend) {
+          finalScore += 0.1;
         }
 
         if (querySignals.core && candidateSignals.core) {
