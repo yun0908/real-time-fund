@@ -14,6 +14,7 @@ export default function UserMenu({user,
   navbarHeight,
   lastSyncTime,
   isSyncing,
+  loginEnabled = true,
   onSync,
   onOpenSettings,
   onOpenPortfolioEarnings,
@@ -52,9 +53,9 @@ export default function UserMenu({user,
       <div className="user-menu-container" ref={userMenuRef}>
         <button
           className={`icon-button user-menu-trigger ${user ? 'logged-in' : ''}`}
-          aria-label={user ? '用户菜单' : '登录'}
+          aria-label={user ? '用户菜单' : (loginEnabled ? '登录' : '本地模式')}
           onClick={() => setUserMenuOpen(!userMenuOpen)}
-          title={user ? (user.email || '用户') : '用户菜单'}
+          title={user ? (user.email || '用户') : (loginEnabled ? '用户菜单' : '本地模式')}
         >
           {user ? (
             <div className="user-avatar-small">
@@ -191,16 +192,23 @@ export default function UserMenu({user,
                 </>
               ) : (
                 <>
-                  <button
-                    className="user-menu-item"
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      onOpenLogin?.();
-                    }}
-                  >
-                    <LoginIcon width="16" height="16" />
-                    <span>登录</span>
-                  </button>
+                  {loginEnabled ? (
+                    <button
+                      className="user-menu-item"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        onOpenLogin?.();
+                      }}
+                    >
+                      <LoginIcon width="16" height="16" />
+                      <span>登录</span>
+                    </button>
+                  ) : (
+                    <div className="user-menu-item" style={{ opacity: 0.65, cursor: 'default', pointerEvents: 'none' }}>
+                      <LoginIcon width="16" height="16" />
+                      <span>本地模式</span>
+                    </div>
+                  )}
                   {!isMobile && (
                     <>
                     <button
@@ -270,4 +278,3 @@ export default function UserMenu({user,
     </>
   );
 }
-

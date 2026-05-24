@@ -2391,7 +2391,7 @@ export default function HomePage() {
 
   const handleOpenLogin = () => {
     if (!isSupabaseConfigured) {
-      showToast('未配置 Supabase，无法登录', 'error');
+      showToast('当前未启用云端同步，请先配置 Supabase', 'error');
       return;
     }
     setLoginModalOpen(true);
@@ -6850,6 +6850,7 @@ export default function HomePage() {
             navbarHeight={navbarHeight}
             lastSyncTime={lastSyncTime}
             isSyncing={isSyncing}
+            loginEnabled={isSupabaseConfigured}
             onSync={() => user?.id && syncUserConfig(user.id)}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenPortfolioEarnings={() => setPortfolioEarningsOpen(true)}
@@ -7544,6 +7545,7 @@ export default function HomePage() {
           user={user}
           userAvatar={userAvatar}
           lastSyncDisplay={lastSyncTime ? dayjs(lastSyncTime).format('MM-DD HH:mm') : null}
+          loginEnabled={isSupabaseConfigured}
           onLogin={handleOpenLogin}
           onMyEarnings={() => setPortfolioEarningsOpen(true)}
           onTutorial={() => {

@@ -9,6 +9,7 @@ export default function MineTab({
   user,
   userAvatar,
   lastSyncDisplay,
+  loginEnabled = true,
   onLogin,
   onMyEarnings,
   onTutorial,
@@ -59,18 +60,20 @@ export default function MineTab({
               </>
             ) : (
               <>
-                <div className="mine-profile-title">未登录</div>
+                <div className="mine-profile-title">{loginEnabled ? '未登录' : '本地模式'}</div>
                 <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  数据仅保存在本机
+                  {loginEnabled ? '数据仅保存在本机' : '云端同步未启用'}
                 </div>
-                <button
-                  type="button"
-                  className="button mine-profile-login-btn"
-                  onClick={onLogin}
-                >
-                  <LoginIcon width={16} height={16} />
-                  <span>登录</span>
-                </button>
+                {loginEnabled && (
+                  <button
+                    type="button"
+                    className="button mine-profile-login-btn"
+                    onClick={onLogin}
+                  >
+                    <LoginIcon width={16} height={16} />
+                    <span>登录</span>
+                  </button>
+                )}
               </>
             )}
           </div>
