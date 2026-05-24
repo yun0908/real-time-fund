@@ -29,6 +29,10 @@ export default function ScanImportConfirmModal({
   const [expandAfterAdd, setExpandAfterAdd] = useState(true);
   const allCodeSet = useMemo(() => new Set((existingAllCodes || []).filter(Boolean)), [existingAllCodes]);
   const favCodeSet = useMemo(() => new Set((existingFavCodes || []).filter(Boolean)), [existingFavCodes]);
+  const lowConfidenceCount = useMemo(
+    () => (scannedFunds || []).filter((item) => item?.confidence === 'low').length,
+    [scannedFunds],
+  );
 
   const handleConfirm = () => {
     onConfirm(selectedGroupId, expandAfterAdd);
@@ -68,7 +72,10 @@ export default function ScanImportConfirmModal({
         </div>
         {isOcrScan && (
           <div className="ocr-warning" style={{ marginBottom: 12 }}>
-            <span>拍照识别方案目前还在优化，请确认识别结果是否正确。</span>
+            <span>
+              拍照识别方案目前还在优化，请确认识别结果是否正确。
+              {lowConfidenceCount > 0 ? ` 其中 ${lowConfidenceCount} 项为低置信度结果，默认不会自动勾选。` : ''}
+            </span>
           </div>
         )}
         {scannedFunds.length === 0 ? (
@@ -81,6 +88,7 @@ export default function ScanImportConfirmModal({
               {scannedFunds.map((item) => {
                 const isSelected = selectedScannedCodes.has(item.code);
                 const isInvalid = item.status === 'invalid';
+                const isLowConfidence = item.confidence === 'low';
                 const targetGroup = selectedGroupId;
                 const inAll = allCodeSet.has(item.code);
                 const inFav = favCodeSet.has(item.code);
@@ -122,8 +130,21 @@ export default function ScanImportConfirmModal({
                       ) : isInvalid ? (
                         <span className="added-label">未找到</span>
                       ) : (
-                        <div className="checkbox">
-                          {isSelected && <div className="checked-mark" />}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {isLowConfidence && (
+                            <span
+                              className="added-label"
+                              style={{
+                                color: 'var(--warning, #f59e0b)',
+                                background: 'color-mix(in srgb, var(--warning, #f59e0b) 15%, transparent)',
+                              }}
+                            >
+                              待确认
+                            </span>
+                          )}
+                          <div className="checkbox">
+                            {isSelected && <div className="checked-mark" />}
+                          </div>
                         </div>
                       )}
                     </div>

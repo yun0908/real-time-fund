@@ -174,6 +174,26 @@ const isFundNameLikelyPresentInOcr = ({ fundName, fundCode, normalizedOcrText, f
   });
 };
 
+const getOcrAnchoredMatchConfidence = ({ fundName, fundCode, normalizedOcrText, fallbackFunds }) => {
+  if (fundCode && normalizedOcrText.includes(String(fundCode).trim())) return 'high';
+
+  const normalizedName = normalizeFundNameText(fundName);
+  if (!normalizedName) return 'low';
+  if (normalizedOcrText.includes(normalizedName)) return 'high';
+
+  const hasExactFallback = (fallbackFunds || []).some(
+    (item) => normalizeFundNameText(item?.fundName || '') === normalizedName,
+  );
+  if (hasExactFallback) return 'high';
+
+  return isFundNameLikelyPresentInOcr({
+    fundName,
+    fundCode,
+    normalizedOcrText,
+    fallbackFunds,
+  }) ? 'medium' : 'low';
+};
+
 const hasSameFundNameCandidate = (allFundsData, candidateName) => {
   const normalizedCandidate = normalizeFundNameText(candidateName);
   if (!normalizedCandidate) return false;
@@ -247,9 +267,11 @@ const pickBestSearchFundMatch = (query, list) => {
   const best = ranked[0] || null;
   const second = ranked[1] || null;
   if (!best) return null;
-  if (best.score >= 6) return best.item;
-  if (best.score >= 4 && (!second || (best.score - second.score) >= 2)) return best.item;
-  if (list.length === 1) return list[0];
+  if (best.score >= 6) return { item: best.item, confidence: 'high' };
+  if (best.score >= 4 && (!second || (best.score - second.score) >= 2)) {
+    return { item: best.item, confidence: 'medium' };
+  }
+  if (list.length === 1) return { item: list[0], confidence: 'low' };
   return null;
 };
 
@@ -487,12 +509,30 @@ export function useScanImport({
             });
 
             if (!isLikelyPresent) return;
+            const matchConfidence = getOcrAnchoredMatchConfidence({
+              fundName: name,
+              fundCode: code,
+              normalizedOcrText,
+              fallbackFunds,
+            });
 
             if (code && !addedFundCodes.has(code)) {
               addedFundCodes.add(code);
-              allFundsData.push({ fundCode: code, fundName: name, holdAmounts: fund.holdAmounts || '', holdGains: fund.holdGains || '' });
+              allFundsData.push({
+                fundCode: code,
+                fundName: name,
+                holdAmounts: fund.holdAmounts || '',
+                holdGains: fund.holdGains || '',
+                matchConfidence,
+              });
             } else if (!code && name && !hasSameFundNameCandidate(allFundsData, name)) {
-              allFundsData.push({ fundCode: '', fundName: name, holdAmounts: fund.holdAmounts || '', holdGains: fund.holdGains || '' });
+              allFundsData.push({
+                fundCode: '',
+                fundName: name,
+                holdAmounts: fund.holdAmounts || '',
+                holdGains: fund.holdGains || '',
+                matchConfidence,
+              });
             }
           });
         }
@@ -520,9 +560,10 @@ export function useScanImport({
             for (const query of searchQueries) {
               const list = await searchFundsWithTimeout(query, 8000);
               const found = pickBestSearchFundMatch(query, list);
-              if (found && found.CODE && !addedFundCodes.has(found.CODE)) {
-                addedFundCodes.add(found.CODE);
-                fundItem.fundCode = found.CODE;
+              if (found?.item?.CODE && !addedFundCodes.has(found.item.CODE)) {
+                addedFundCodes.add(found.item.CODE);
+                fundItem.fundCode = found.item.CODE;
+                fundItem.matchConfidence = found.confidence || fundItem.matchConfidence || 'medium';
                 break;
               }
             }
@@ -534,6 +575,7 @@ export function useScanImport({
                   if (fuzzyCode && !addedFundCodes.has(fuzzyCode)) {
                     addedFundCodes.add(fuzzyCode);
                     fundItem.fundCode = fuzzyCode;
+                    fundItem.matchConfidence = fundItem.matchConfidence || 'low';
                     break;
                   }
                 } catch (e) {}
@@ -571,13 +613,18 @@ export function useScanImport({
           status: alreadyAdded ? 'added' : (ok ? 'ok' : 'invalid'),
           holdAmounts: fundInfo?.holdAmounts || '',
           holdGains: fundInfo?.holdGains || '',
+          confidence: fundInfo?.matchConfidence || 'medium',
         });
       }
 
       if (abortScanRef.current) return;
 
       setScannedFunds(results);
-      setSelectedScannedCodes(new Set(results.filter(r => r.status === 'ok').map(r => r.code)));
+      setSelectedScannedCodes(new Set(
+        results
+          .filter((r) => r.status === 'ok' && r.confidence !== 'low')
+          .map((r) => r.code),
+      ));
       setIsOcrScan(true);
       setScanConfirmModalOpen(true);
     } catch (err) {
